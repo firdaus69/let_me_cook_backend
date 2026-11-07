@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Difficulty {
+  easy
+  medium
+  hard
+}
+
+enum IngredientCategory {
+  protein
+  vegetables
+  dairy
+  pantry
+  spices
+}
+
+/// Colour family for the app's placeholder thumbnail until real photos exist.
+enum RecipeTone {
+  orange
+  green
+  yellow
+  red
+  brown
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  countryCode  String   @default("MY") @map("country_code")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  country    Country       @relation(fields: [countryCode], references: [code])
+  saved      SavedRecipe[]
+  cookEvents CookEvent[]
+
+  @@map("users")
+}
+
+model Country {
+  code String @id
+  name String
+
+  recipes Recipe[]
+  users   User[]
+
+  @@map("countries")
+}
+
+model Recipe {
+  id          String     @id // slug, e.g. "nasi-lemak"
+  title       String
+  minutes     Int
+  difficulty  Difficulty
+  tone        RecipeTone @default(orange)
+  imageUrl    String?    @map("image_url")
+  steps       String[]   @default([])
+  countryCode String     @map("country_code")
+
+  /// Position in the country's "Suggested for you" list (1 = first). Null = not suggested.
+  featuredRank Int? @map("featured_rank")
+
+  /// Editorial baseline for "Popular"; real cook events rank above it.
+  popularity Int @default(0)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  country     Country            @relation(fields: [countryCode], references: [code])
+  ingredients RecipeIngredient[]
+  savedBy     SavedRecipe[]
+  cookEvents  CookEvent[]
+
+  @@index([countryCode])
+  @@map("recipes")
+}
+
+model Ingredient {
+  id       String             @id // slug, e.g. "coconut-milk"
+  name     String             @unique
+  category IngredientCategory
+
+  recipes RecipeIngredient[]
+
+  @@map("ingredients")
+}
+
+model RecipeIngredient {
+  recipeId     String  @map("recipe_id")
+  ingredientId String  @map("ingredient_id")
+  position     Int     @default(0) // display order within the recipe
+  quantity     String? // free text for now, e.g. "2 cups"
+
+  recipe     Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@id([recipeId, ingredientId])
+  @@index([ingredientId])
+  @@map("recipe_ingredients")
+}
+
+model SavedRecipe {
+  userId    String   @map("user_id")
+  recipeId  String   @map("recipe_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@id([userId, recipeId])
+  @@map("saved_recipes")
+}
+
+/// One row each time a user says they cooked a recipe; drives "Popular".
+model CookEvent {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  recipeId  String   @map("recipe_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@index([recipeId, createdAt])
+  @@map("cook_events")
+}
